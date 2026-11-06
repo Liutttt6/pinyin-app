@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>拼音乐园</title>
+<!-- 让平板可以“添加到主屏幕”，像 App 一样全屏打开 -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ff7a45">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="拼音乐园">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<style>
+  * { box-sizing: border-box; }
+  /* 触屏优化：快速连点不放大页面，点按时不出现灰色高亮，不会误选中文字 */
+  button, .word, .char-big { touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+                             -webkit-user-select: none; user-select: none; }
+  body {
+    margin: 0;
+    /* 全屏 App 模式下避开 iPad 的圆角和状态栏 */
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+             max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: linear-gradient(160deg, #fff6e5, #e8f6ff);
+    color: #333; min-height: 100vh;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; }
+  .top { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 8px; }
+  h1 { color: #ff7a45; margin: 0; font-size: 26px; }
+  .tabs { display: flex; gap: 8px; }
+  .tab {
+    border: none; border-radius: 18px; padding: 6px 18px; font-size: 17px;
+    background: #fff; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.1);
+  }
+  .tab.active { background: #ff7a45; color: #fff; }
+  /* 左边选按钮，右边固定显示结果，不用上下滑动 */
+  .layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr); gap: 10px; align-items: start; }
+  .result { position: sticky; top: 8px; }
+  @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } .result { position: static; } }
+  .panel { background: #fff; border-radius: 14px; padding: 8px 12px; margin-bottom: 8px;
+           box-shadow: 0 3px 10px rgba(0,0,0,.06); }
+  .panel h3 { margin: 0 0 6px; font-size: 15px; color: #666; }
+  .panel h3 .sub { font-size: 13px; color: #aaa; font-weight: normal; }
+  .kind { display: inline-block; margin-left: 8px; padding: 1px 10px; font-size: 15px;
+          border-radius: 12px; background: #fff0f6; color: #c41d7f; vertical-align: middle; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .py-btn {
+    min-width: 46px; height: 42px; padding: 0 8px; font-size: 20px;
+    border: 3px solid transparent; border-radius: 10px; cursor: pointer;
+    font-family: "Arial", sans-serif; transition: transform .1s;
+  }
+  @media (hover: hover) { .py-btn:hover { transform: scale(1.08); } }   /* 触屏没有悬停，避免按钮一直放大 */
+  .py-btn:active { transform: scale(0.95); }
+  .py-btn.sel { border-color: #333; transform: scale(1.08); }
+  .g-initial { background: #d6ecff; color: #1765ad; }
+  .g-medial  { background: #efe0ff; color: #6b2fb3; }
+  .g-final   { background: #ffe7cc; color: #c25400; }
+  .g-whole   { background: #ffe0e6; color: #c41d4a; }
+  .g-tone    { background: #dcf5d6; color: #2b7a1e; position: relative; }
+  .g-tone.has::after {   /* 有字的声调右上角加个小圆点 */
+    content: ""; position: absolute; top: 4px; right: 4px;
+    width: 9px; height: 9px; border-radius: 50%; background: #ff4d4f;
+  }
+  .formula { text-align: center; font-size: 22px; color: #888; min-height: 32px; }
+  .big-py { text-align: center; font-size: 52px; font-family: Arial, sans-serif;
+            color: #ff7a45; min-height: 64px; font-weight: bold; line-height: 1.2; }
+  .msg { text-align: center; font-size: 16px; padding: 5px 10px; border-radius: 10px; margin: 4px auto; max-width: 720px; }
+  .msg.err  { background: #fff1f0; color: #cf1322; }
+  .msg.tip  { background: #e6f7ff; color: #0958d9; }
+  .msg.ok   { background: #f6ffed; color: #389e0d; }
+  .chars { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 6px; }
+  .char-card { background: #fffbe6; border: 3px solid #ffd666; border-radius: 14px;
+               padding: 4px 12px; text-align: center; min-width: 120px; }
+  .char-big { font-size: 52px; cursor: pointer; line-height: 1.2; }
+  .word { display: inline-block; margin: 3px; padding: 2px 10px; font-size: 18px;
+          background: #fff; border: 2px solid #ffc53d; border-radius: 16px; cursor: pointer; }
+  .word:hover, .char-big:hover { color: #ff7a45; }
+  .hint { text-align: center; color: #999; font-size: 13px; margin: 6px 0; }
+  .quiz-panel { max-width: 640px; margin: 0 auto; text-align: center; }
+  .quiz-py { font-size: 52px; font-family: Arial; color: #1765ad; font-weight: bold; }
+  .quiz-char { font-size: 96px; line-height: 1.2; }
+  .quiz-ask { font-size: 20px; margin: 6px 0; }
+  .action { font-size: 18px; padding: 8px 20px; border: none; border-radius: 20px;
+            background: #40a9ff; color: #fff; cursor: pointer; margin: 4px; }
+  .action.clear { background: #ff7875; }
+  .action.rec { background: #52c41a; font-size: 22px; padding: 12px 28px; }
+  .action.rec.listening { background: #ff4d4f; animation: pulse 1s infinite; }
+  .action:disabled { opacity: .5; cursor: default; }
+  .pick-opts { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 10px 0; }
+  .pick-opt { font-size: 52px; width: 100px; height: 100px; border-radius: 16px; cursor: pointer;
+              border: 3px solid #91caff; background: #f0f8ff; }
+  .pick-opt.right { background: #b7eb8f; border-color: #52c41a; }
+  .pick-opt.wrong { background: #ffccc7; border-color: #ff4d4f; }
+  @keyframes pulse { 50% { transform: scale(1.08); } }
+  .center { text-align: center; }
+  .score { text-align: center; font-size: 20px; color: #666; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>🌈 拼音乐园</h1>
+    <div class="tabs">
+      <button class="tab active" data-mode="spell">🔤 拼一拼</button>
+      <button class="tab" data-mode="pick">🧩 认一认</button>
+      <button class="tab" data-mode="quiz">🎤 读一读</button>
+    </div>
+  </div>
+
+  <!-- 拼读区：左边选按钮，右边看结果 -->
+  <div id="builder" class="layout">
+   <div class="pick">
+    <div class="panel"><h3>① 选声母 <span class="sub">（a、ai、er 这类韵母自己成音节时选「(无)」）</span></h3>
+      <div class="btns" id="initials"></div></div>
+    <div class="panel"><h3>② 选介母 <span class="sub">（拼三拼音节才选，双拼跳过这一步）</span></h3>
+      <div class="btns" id="medials"></div></div>
+    <div class="panel"><h3>③ 选韵母</h3><div class="btns" id="finals"></div></div>
+    <div class="panel"><h3>或者：直接选整体认读音节 <span class="sub">（不用拼，整个读）</span></h3>
+      <div class="btns" id="wholes"></div></div>
+    <div class="panel"><h3>④ 选声调 <span class="sub">（小红点表示有字）</span></h3><div class="btns" id="tones"></div></div>
+   </div>
+
+    <div class="panel result">
+      <div class="formula" id="formula"></div>
+      <div class="big-py" id="bigpy"></div>
+      <div id="msgs"></div>
+      <div class="chars" id="chars"></div>
+      <p class="hint">点一点汉字或词语，可以听读音 🔊</p>
+      <div class="center"><button class="action clear" id="clear-btn">🧹 清除，重新拼</button></div>
+    </div>
+  </div>
+
+  <!-- 认一认：看拼音选出正确的字 -->
+  <div id="pick" class="hidden">
+    <div class="panel quiz-panel">
+      <div class="score" id="pick-score">答对 0 题 / 共 0 题</div>
+      <div class="quiz-py" id="pick-py"></div>
+      <button class="action" id="pick-listen">🔊 听一听</button>
+      <div class="quiz-ask">这个拼音是哪个字？</div>
+      <div class="pick-opts" id="pick-opts"></div>
+      <div id="pick-msg"></div>
+      <div class="chars" id="pick-words"></div>
+      <button class="action" id="pick-next">下一题 ➡</button>
+    </div>
+  </div>
+
+  <!-- 读一读：录音判断读得准不准 -->
+  <div id="quiz" class="hidden">
+    <div class="panel quiz-panel">
+      <div class="score" id="score">读对 0 题 / 共 0 题</div>
+      <div class="quiz-py" id="quiz-py"></div>
+      <div class="quiz-char" id="quiz-char"></div>
+      <div class="quiz-ask" id="quiz-ask"></div>
+      <div>
+        <button class="action" id="quiz-listen">🔊 听一听</button>
+        <button class="action rec" id="quiz-rec">🎤 按一下，开始读</button>
+      </div>
+      <div id="quiz-msg"></div>
+      <div class="center"><button class="action" id="quiz-next">下一题 ➡</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================== 基础数据 ==================
+const INITIALS = ['b','p','m','f','d','t','n','l','g','k','h','j','q','x',
+                  'zh','ch','sh','r','z','c','s','y','w'];
+const FINALS_TWO = ['a','o','e','i','u','ü','ai','ei','ui','ao','ou','iu','ie','üe','er',
+                    'an','en','in','un','ün','ang','eng','ing','ong'];
+const MEDIALS = ['i','u','ü'];
+const FINALS_THREE = ['a','o','ai','ao','an','ang','ong'];
+const WHOLES = ['zhi','chi','shi','ri','zi','ci','si','yi','wu','yu',
+                'ye','yue','yuan','yin','yun','ying'];
+const TONES = [
+  { t: 1, label: 'ˉ 一声' }, { t: 2, label: 'ˊ 二声' },
+  { t: 3, label: 'ˇ 三声' }, { t: 4, label: 'ˋ 四声' }, { t: 0, label: '· 轻声' }
+];
+
+// 普通话合法音节表（ü 用 v 表示，只出现在 n、l 后面）
+const VALID = new Set(`
+a o e ai ei ao ou an en ang eng er
+ba bo bai bei bao ban ben bang beng bi biao bie bian bin bing bu
+pa po pai pei pao pou pan pen pang peng pi piao pie pian pin ping pu
+ma mo me mai mei mao mou man men mang meng mi miao mie miu mian min ming mu
+fa fo fei fou fan fen fang feng fu
+da de dai dei dao dou dan den dang deng dong di dia diao die diu dian ding du duo dui duan dun
+ta te tai tao tou tan tang teng tong ti tiao tie tian ting tu tuo tui tuan tun
+na ne nai nei nao nou nan nen nang neng nong ni niao nie niu nian nin niang ning nu nuo nuan nv nve
+la le lai lei lao lou lan lang leng long li lia liao lie liu lian lin liang ling lu luo luan lun lv lve
+ga ge gai gei gao gou gan gen gang geng gong gu gua guo guai gui guan gun guang
+ka ke kai kao kou kan ken kang keng kong ku kua kuo kuai kui kuan kun kuang
+ha he hai hei hao hou han hen hang heng hong hu hua huo huai hui huan hun huang
+ji jia jiao jie jiu jian jin jiang jing jiong ju jue juan jun
+qi qia qiao qie qiu qian qin qiang qing qiong qu que quan qun
+xi xia xiao xie xiu xian xin xiang xing xiong xu xue xuan xun
+zha zhe zhi zhai zhei zhao zhou zhan zhen zhang zheng zhong zhu zhua zhuo zhuai zhui zhuan zhun zhuang
+cha che chi chai chao chou chan chen chang cheng chong chu chua chuo chuai chui chuan chun chuang
+sha she shi shai shei shao shou shan shen shang sheng shu shua shuo shuai shui shuan shun shuang
+re ri rao rou ran ren rang reng rong ru ruo rui ruan run
+za ze zi zai zei zao zou zan zen zang zeng zong zu zuo zui zuan zun
+ca ce ci cai cao cou can cen cang ceng cong cu cuo cui cuan cun
+sa se si sai sao sou san sen sang seng song su suo sui suan sun
+ya yo ye yao you yan yin yang ying yong yi yu yue yuan yun
+wa wo wai wei wan wen wang weng wu
+`.trim().split(/\s+/));
+
+// 常用字库：每行 = 音节+声调  汉字  词语1 词语2 ...（声调 0 表示轻声）
+const RAW = `
+ai4 爱 爱心 可爱
+ai3 矮 矮小 高矮
+an1 安 安全 平安
+an4 岸 河岸 海岸
+e2 鹅 白鹅 天鹅
+e4 饿 饥饿 饿了
+er2 儿 儿子 女儿
+er3 耳 耳朵 木耳
+er4 二 二月 十二
+ou3 藕 莲藕
+en1 恩 恩人
+ba1 八 八月 八个
+ba1 巴 尾巴 下巴
+ba2 拔 拔草 拔河
+ba3 把 一把 把手
+ba4 爸 爸爸
+bo1 波 波浪 水波
+bo2 伯 伯伯
+bo2 脖 脖子
+bai2 白 白云 白色
+bai3 百 一百 百花
+bai4 拜 拜年
+bei1 杯 杯子 水杯
+bei3 北 北方 北京
+bei4 被 被子
+bei4 贝 贝壳 宝贝
+bao1 包 书包 面包
+bao3 饱 吃饱
+bao3 宝 宝贝 宝石
+bao4 抱 拥抱
+bao4 报 报纸
+ban1 班 班级 上班
+ban3 板 黑板 木板
+ban4 半 一半 半天
+ben3 本 本子 书本
+ben1 奔 奔跑
+bang1 帮 帮助 帮忙
+bang4 棒 木棒 真棒
+beng4 蹦 蹦跳
+bi2 鼻 鼻子
+bi3 笔 铅笔 毛笔
+bi3 比 比赛
+bi4 闭 关闭 闭眼
+biao3 表 手表 表扬
+bie2 别 别人 告别
+bian1 边 旁边 河边
+bian4 变 变化
+bing1 冰 冰雪 冰块
+bing3 饼 月饼 饼干
+bing4 病 生病 病人
+bu4 不 不要 不是
+bu4 布 布鞋 花布
+bu4 步 跑步 散步
+bu3 补 补充
+pa2 爬 爬山 爬树
+pa4 怕 害怕
+po1 坡 山坡
+po2 婆 婆婆 外婆
+po4 破 破坏
+pai2 排 排队
+pai1 拍 拍手
+pei2 陪 陪伴
+pao3 跑 跑步 赛跑
+pao4 炮 鞭炮
+pan2 盘 盘子
+pan4 盼 盼望
+pang2 旁 旁边
+pang4 胖 胖乎乎
+peng2 朋 朋友
+peng4 碰 碰到
+pi2 皮 皮球 皮肤
+piao1 飘 飘扬
+piao4 漂 漂亮
+pian4 片 一片 图片
+pian1 篇 一篇
+pin3 品 品尝
+ping2 平 平安
+ping2 苹 苹果
+ping2 瓶 瓶子
+pu3 普 普通
+ma1 妈 妈妈
+ma2 麻 芝麻
+ma3 马 小马 马路
+ma3 蚂 蚂蚁
+ma4 骂 打骂
+ma0 吗 好吗
+mo1 摸 摸一摸
+mo2 蘑 蘑菇
+mo4 墨 墨水
+mo4 末 周末
+mai3 买 买菜
+mai4 卖 卖东西
+mai4 麦 小麦
+mei2 没 没有
+mei2 梅 梅花
+mei3 美 美丽
+mei3 每 每天
+mei4 妹 妹妹
+mao1 猫 小猫
+mao2 毛 毛笔 羽毛
+mao4 帽 帽子
+man3 满 满意
+man4 慢 慢慢
+man2 馒 馒头
+men2 门 大门 开门
+men0 们 我们 你们
+mang2 忙 帮忙
+mang2 芒 芒果
+meng4 梦 做梦 梦想
+mi3 米 大米 米饭
+mi4 蜜 蜂蜜
+mi2 迷 迷路
+miao2 苗 禾苗
+miao3 秒 秒钟
+mian4 面 面条 面包
+mian2 棉 棉花
+min2 民 人民
+ming2 明 明天 明亮
+ming2 名 名字
+mu4 木 木头 树木
+mu3 母 母亲
+mu4 目 目光
+fa1 发 发现
+fa3 法 方法
+fei1 飞 飞机
+fei2 肥 肥料
+fan4 饭 米饭 吃饭
+fan1 翻 翻书
+fen1 分 分开 分数
+fen3 粉 粉红
+fang1 方 方向 地方
+fang2 房 房子
+fang4 放 放学
+feng1 风 大风 风车
+feng1 蜂 蜜蜂
+fu2 服 衣服
+fu2 福 幸福
+fu4 父 父亲
+da1 搭 搭积木
+da2 答 回答
+da3 打 打开
+da4 大 大小 大人
+de2 得 得到
+de0 的 我的
+dai4 带 带领
+dao1 刀 小刀
+dao3 岛 小岛
+dao4 到 到达
+dao4 道 知道
+dou1 都 都是
+dou4 豆 豆子 土豆
+dan1 单 简单
+dan4 蛋 鸡蛋
+dang1 当 当然
+deng1 灯 电灯
+deng3 等 等待
+dong1 东 东方
+dong1 冬 冬天
+dong4 动 动物
+di1 低 低头
+di3 底 底下
+di4 地 地方 大地
+di4 弟 弟弟
+diao4 掉 掉下
+die2 蝶 蝴蝶
+dian3 点 点头
+dian4 电 电话
+ding3 顶 山顶
+du2 读 读书
+du4 肚 肚子
+duo1 多 多少
+duo3 朵 花朵 云朵
+dui4 对 对错
+duan3 短 长短
+dun1 蹲 蹲下
+ta1 他 他们
+ta1 她 她们
+ta1 它 它们
+ta3 塔 宝塔
+te4 特 特别
+tai2 台 台灯
+tai4 太 太阳
+tao2 桃 桃花 桃子
+tao3 讨 讨论
+tou2 头 头发
+tan2 谈 谈话
+tang2 糖 糖果
+tang3 躺 躺下
+teng2 疼 头疼
+tong2 同 同学
+tong3 桶 水桶
+ti1 踢 踢球
+ti2 提 提问
+ti3 体 身体
+tiao2 条 面条
+tiao4 跳 跳绳
+tie1 贴 贴纸
+tie3 铁 铁路
+tian1 天 天空
+tian2 田 田地
+ting1 听 听话
+ting2 停 停车
+tu2 图 图画
+tu3 土 土地
+tu4 兔 兔子
+tuo1 拖 拖鞋
+tui1 推 推开
+tui3 腿 大腿
+tuan2 团 团结
+na2 拿 拿走
+na3 哪 哪里
+na4 那 那里
+nai3 奶 牛奶 奶奶
+nao3 脑 电脑
+nan2 男 男孩
+nan2 南 南方
+nan2 难 困难
+neng2 能 能力
+nong2 农 农民
+ni2 泥 泥土
+ni3 你 你好
+niao3 鸟 小鸟
+niu2 牛 牛奶
+nian2 年 新年
+nian4 念 想念
+niang2 娘 姑娘
+nu3 努 努力
+nv3 女 女儿
+nuan3 暖 温暖
+la1 拉 拉手
+la4 辣 辣椒
+le4 乐 快乐
+le0 了 好了
+lai2 来 来到
+lei2 雷 打雷
+lei4 累 劳累
+lao3 老 老师
+lou2 楼 楼房
+lan2 蓝 蓝天
+lan2 篮 篮球
+lan3 懒 懒惰
+lang2 狼 灰狼
+lang4 浪 波浪
+leng3 冷 寒冷
+long2 龙 龙舟
+li2 离 离开
+li3 里 里面
+li3 李 李子
+li4 力 力气
+liang2 凉 凉快
+liang3 两 两个
+liang4 亮 明亮
+liu2 流 流水
+liu4 六 六个
+lian2 莲 莲花
+lian3 脸 洗脸
+lin2 林 树林
+ling2 铃 铃声
+ling3 领 领巾
+lu4 路 马路
+lu4 鹿 小鹿
+luo4 落 落叶
+lun2 轮 车轮
+lv4 绿 绿色
+ge1 哥 哥哥
+ge1 歌 唱歌
+ge4 个 一个
+gai3 改 改正
+gai4 盖 盖子
+gei3 给 送给
+gao1 高 高兴
+gao4 告 告诉
+gou3 狗 小狗
+gan1 干 干净
+gan3 感 感谢
+gen1 跟 跟着
+gen1 根 树根
+gang1 刚 刚才
+gong1 工 工人
+gong1 公 公园
+gu1 姑 姑姑
+gu3 古 古代
+gu3 骨 骨头
+gua1 瓜 西瓜
+gua4 挂 挂图
+guo2 国 中国
+guo3 果 水果
+guo4 过 过去
+guai1 乖 乖巧
+gui4 贵 宝贵
+guan1 关 关门
+guan3 馆 图书馆
+gun3 滚 滚动
+guang1 光 阳光
+guang3 广 广场
+ka3 卡 卡片
+ke1 科 科学
+ke3 可 可以
+ke4 课 上课
+ke4 客 客人
+kai1 开 开心
+kao3 考 考试
+kou3 口 门口
+kan4 看 看书
+ku1 哭 哭泣
+ku3 苦 辛苦
+ku4 裤 裤子
+kua1 夸 夸奖
+kuai4 快 快乐
+kuai4 块 一块
+kun4 困 困难
+he1 喝 喝水
+he2 河 小河
+he2 和 和平
+hai2 孩 孩子
+hai3 海 大海
+hai4 害 害怕
+hei1 黑 黑色
+hao3 好 好人
+hao4 号 号码
+hou2 猴 猴子
+hou4 后 后面
+han2 寒 寒冷
+han4 汉 汉字
+hen3 很 很好
+heng2 横 横线
+hong2 红 红色
+hu1 呼 呼吸
+hu2 湖 湖水
+hu3 虎 老虎
+hu4 户 户外
+hua1 花 花朵
+hua2 划 划船
+hua4 画 画画
+hua4 话 说话
+huo2 活 生活
+huo3 火 火车
+huai4 坏 坏人
+hui1 灰 灰色
+hui2 回 回家
+hui4 会 开会
+huan1 欢 欢乐
+huan2 还 还书
+huan4 换 交换
+huang2 黄 黄色
+ji1 鸡 小鸡
+ji3 几 几个
+ji4 记 记住
+jia1 家 家人
+jia4 架 书架
+jiao1 教 教书
+jiao3 脚 小脚
+jiao4 叫 叫声
+jie1 街 街道
+jie2 节 节日
+jie3 姐 姐姐
+jiu3 九 九月
+jiu4 旧 新旧
+jian1 尖 尖尖
+jian3 剪 剪刀
+jian4 见 看见
+jin1 今 今天
+jin3 紧 紧张
+jin4 进 进来
+jiang1 江 长江
+jiang3 讲 讲话
+jing1 京 北京
+jing3 井 水井
+jing4 静 安静
+ju2 菊 菊花
+ju3 举 举手
+ju4 句 句子
+jue2 觉 觉得
+jun1 军 军人
+qi1 七 七天
+qi2 骑 骑车
+qi3 起 起来
+qi4 气 空气
+qiao2 桥 大桥
+qie2 茄 茄子
+qiu1 秋 秋天
+qiu2 球 足球
+qian1 千 千万
+qian2 前 前面
+qian3 浅 深浅
+qin1 亲 亲人
+qin2 琴 钢琴
+qiang2 墙 墙壁
+qing1 青 青草
+qing2 晴 晴天
+qing3 请 请坐
+qu3 取 取得
+qu4 去 去年
+que4 雀 麻雀
+quan2 全 安全
+qun2 群 羊群
+xi1 西 东西
+xi2 习 学习
+xi3 洗 洗手
+xia1 虾 小虾
+xia4 下 下面
+xia4 夏 夏天
+xiao3 小 大小
+xiao4 笑 笑脸
+xie2 鞋 鞋子
+xie3 写 写字
+xie4 谢 谢谢
+xiu1 休 休息
+xian1 先 先生
+xian4 现 现在
+xin1 心 开心
+xin4 信 写信
+xiang1 香 香味
+xiang3 想 想念
+xiang4 象 大象
+xing1 星 星星
+xing2 行 行走
+xiong2 熊 熊猫
+xu3 许 许多
+xue2 学 学习
+xue3 雪 雪花
+xuan3 选 选择
+zhai1 摘 摘花
+zhe4 这 这里
+zhao3 找 找到
+zhao4 照 照片
+zhou1 周 周末
+zhan4 站 车站
+zhen1 真 真心
+zhang1 张 一张
+zhang3 长 长大
+zheng3 整 整齐
+zheng4 正 正在
+zhong1 中 中国
+zhong3 种 种子
+zhong4 重 重要
+zhu1 猪 小猪
+zhu2 竹 竹子
+zhu3 主 主人
+zhu4 住 住在
+zhua1 抓 抓住
+zhuo1 桌 桌子
+zhuan3 转 转身
+zhun3 准 准备
+zhuang1 装 服装
+zhi1 只 一只
+zhi1 知 知道
+zhi2 直 直线
+zhi3 纸 白纸
+zhi4 志 志气
+cha1 叉 叉子
+cha2 茶 喝茶
+che1 车 汽车
+chi1 吃 吃饭
+chi2 池 池塘
+chi3 尺 尺子
+chi4 翅 翅膀
+chang2 长 长短
+chang3 场 操场
+chang4 唱 唱歌
+cheng2 城 城市
+chong2 虫 虫子
+chu1 出 出来
+chuan1 穿 穿衣
+chuan2 船 小船
+chuang1 窗 窗户
+chuang2 床 起床
+chun1 春 春天
+chui1 吹 吹风
+sha1 沙 沙滩
+she2 蛇 小蛇
+shi1 师 老师
+shi2 十 十个
+shi2 石 石头
+shi4 是 是的
+shi4 事 事情
+shan1 山 高山
+shen1 身 身体
+shen2 什 什么
+shang4 上 上面
+sheng1 生 生日
+sheng1 声 声音
+shou3 手 小手
+shu1 书 读书
+shu3 鼠 老鼠
+shu4 树 大树
+shui3 水 河水
+shui4 睡 睡觉
+shuo1 说 说话
+shuang1 双 一双
+re4 热 热水
+ri4 日 日子 生日
+rou4 肉 牛肉
+ran2 然 当然
+ren2 人 大人
+ren4 认 认识
+rang4 让 让开
+ru2 如 如果
+ru4 入 入口
+zi3 紫 紫色
+zi4 字 写字
+zi4 自 自己
+zai4 在 现在
+zai4 再 再见
+zao3 早 早上
+zou3 走 走路
+zuo2 昨 昨天
+zuo3 左 左手
+zuo4 坐 坐下
+zuo4 做 做饭
+zui3 嘴 嘴巴
+zui4 最 最好
+zu2 足 足球
+ci2 词 词语
+ci4 次 一次
+cai2 才 刚才
+cai4 菜 青菜
+cao3 草 小草
+cong2 从 从来
+cuo4 错 错误
+si1 丝 丝瓜
+si4 四 四个
+san1 三 三个
+san3 伞 雨伞
+sen1 森 森林
+song4 送 送给
+suo3 所 所以
+sui4 岁 几岁
+suan4 算 算数
+ya1 鸭 鸭子
+ya2 牙 牙齿
+yao1 腰 弯腰
+yao3 咬 咬一口
+yao4 要 要是
+you2 游 游泳
+you3 有 有人
+you4 又 又来
+yan2 盐 盐水
+yan3 眼 眼睛
+yang2 羊 小羊
+yang2 阳 太阳
+yang4 样 样子
+yong3 勇 勇敢
+yong4 用 有用
+yi1 一 一个
+yi1 衣 衣服
+yi2 姨 阿姨
+yi3 椅 椅子
+yi4 意 意思
+wu1 乌 乌云
+wu2 无 无边
+wu3 五 五个
+wu4 雾 大雾
+yu2 鱼 小鱼
+yu3 雨 下雨
+yu4 玉 玉米
+ye1 椰 椰子
+ye2 爷 爷爷
+ye3 也 也是
+ye4 叶 树叶
+ye4 夜 夜晚
+yue1 约 约定
+yue4 月 月亮
+yuan2 圆 圆形
+yuan3 远 远方
+yuan4 院 院子
+yin1 音 音乐
+yin2 银 银色
+yin4 印 印章
+yun2 云 白云
+yun4 运 运动
+ying1 鹰 老鹰
+ying2 赢 输赢
+ying3 影 影子
+ying4 硬 硬币
+wa1 挖 挖土
+wa2 娃 娃娃
+wa4 袜 袜子
+wo1 窝 鸟窝
+wo3 我 我们
+wo4 握 握手
+wai4 外 外面
+wei2 围 围巾
+wei3 尾 尾巴
+wan1 弯 弯曲
+wan2 玩 玩具
+wan3 晚 晚上
+wan4 万 一万
+wen2 文 文字
+wen4 问 问题
+wang2 王 国王
+wang3 网 上网
+wang4 望 希望
+biao1 标 目标 标点
+duan1 端 端午
+duan4 断 断开
+tuo2 驼 骆驼
+nuo2 挪 挪动
+lia3 俩 我俩
+liao2 聊 聊天
+liao4 料 材料
+luo2 萝 萝卜
+luan4 乱 乱跑
+guai3 拐 拐弯
+guai4 怪 奇怪
+kua4 跨 跨过
+kuo4 阔 宽阔
+kuan1 宽 宽大
+kuang1 筐 竹筐
+kuang4 框 框子
+huai2 怀 怀抱
+huang1 慌 慌张
+huang3 谎 说谎
+jiong3 窘 窘迫
+juan1 捐 捐款
+juan3 卷 卷子
+qia4 恰 恰好
+qiao1 敲 敲门
+qiao3 巧 巧手
+qiang1 枪 水枪
+qiang3 抢 抢先
+qiong2 穷 贫穷
+quan1 圈 圆圈
+quan4 劝 劝说
+xiong1 兄 兄弟
+xuan2 旋 旋转
+zhua3 爪 爪子
+zhuo2 啄 啄木鸟
+zhuan1 砖 砖头
+zhuang4 撞 撞到
+shua1 刷 牙刷
+shuai1 摔 摔倒
+shuai4 帅 帅气
+shuan1 拴 拴住
+shuang3 爽 凉爽
+ruo4 弱 弱小
+ruan3 软 软软
+zuan1 钻 钻洞
+cuo1 搓 搓手
+suo1 缩 缩小
+suan1 酸 酸甜
+zhuai4 拽 拽住
+chuo1 戳 戳破
+cuan4 窜 乱窜
+`;
+
+// 把字库整理成：{ "ma1": [{c:"妈", w:["妈妈"]}], ... }
+const DICT = {};
+const ENTRIES = [];
+RAW.trim().split('\n').forEach(line => {
+  const [key, c, ...w] = line.trim().split(/\s+/);
+  const syl = key.slice(0, -1), tone = Number(key.slice(-1));
+  if (!VALID.has(syl)) console.warn('字库里有不合法的音节：', key);
+  const item = { syl, tone, c, w };
+  (DICT[key] = DICT[key] || []).push(item);
+  ENTRIES.push(item);
+});
+
+// ================== 发音数据 ==================
+// 浏览器语音不会读拼音字母，所以用“代表字”来读出声母、韵母的标准呼读音（与课本一致）
+const PART_SOUND = {
+  // 声母
+  b: '玻', p: '坡', m: '摸', f: '佛', d: '得', t: '特', n: '讷', l: '勒',
+  g: '哥', k: '科', h: '喝', j: '基', q: '欺', x: '希',
+  zh: '知', ch: '吃', sh: '诗', r: '日', z: '资', c: '雌', s: '思', y: '衣', w: '乌',
+  // 单韵母 / 介母
+  a: '啊', o: '喔', e: '婀', i: '衣', u: '乌', 'ü': '迂',
+  // 复韵母、鼻韵母（ong 没有单独成字，用最接近的“嗡”代替）
+  ai: '哀', ei: '欸', ui: '威', ao: '凹', ou: '欧', iu: '优', ie: '耶', 'üe': '约', er: '儿',
+  an: '安', en: '恩', in: '因', un: '温', 'ün': '晕',
+  ang: '昂', eng: '鞥', ing: '英', ong: '嗡',
+  // 整体认读音节
+  zhi: '知', chi: '吃', shi: '诗', ri: '日', zi: '资', ci: '雌', si: '思',
+  yi: '衣', wu: '乌', yu: '迂', ye: '耶', yue: '约', yuan: '冤', yin: '因', yun: '晕', ying: '英'
+};
+
+// 多音字单独读容易读错，改用不会读错的同音字来朗读（键 = 音节+声调+汉字）
+const SPEAK_AS = {
+  'chang2长': '常', 'zhang3长': '掌', 'huan2还': '环', 'zhi1只': '之',
+  'jiao1教': '交', 'jue2觉': '决', 'dou1都': '兜', 'piao4漂': '票',
+  'le4乐': '勒', 'shen2什': '神'
+};
+
+/** 得到一个字的朗读文本：轻声字单独读不准，读它的词语 */
+function sayChar(item) {
+  if (item.tone === 0) return item.w[0];
+  return SPEAK_AS[item.syl + item.tone + item.c] || item.c;
+}
+
+// ================== 工具函数 ==================
+const TONE_MARKS = { a: 'āáǎà', o: 'ōóǒò', e: 'ēéěè', i: 'īíǐì', u: 'ūúǔù', 'ü': 'ǖǘǚǜ' };
+
+/** 内部写法(v 代表 ü) → 课本写法 */
+function toWritten(syl) { return syl.replace(/v/g, 'ü'); }
+
+/** 给拼音加声调符号：有 a 标 a，没 a 找 o e，i u 并列标在后 */
+function addTone(py, tone) {
+  if (!tone) return py;
+  let idx;
+  if (py.includes('a')) idx = py.indexOf('a');
+  else if (py.includes('o')) idx = py.indexOf('o');
+  else if (py.includes('e')) idx = py.indexOf('e');
+  else if (py.includes('iu')) idx = py.indexOf('iu') + 1;
+  else if (py.includes('ui')) idx = py.indexOf('ui') + 1;
+  else {
+    idx = Math.max(py.lastIndexOf('i'), py.lastIndexOf('u'), py.lastIndexOf('ü'));
+  }
+  const ch = py[idx];
+  return py.slice(0, idx) + TONE_MARKS[ch][tone - 1] + py.slice(idx + 1);
+}
+
+/** 朗读（浏览器自带中文语音） */
+function speak(text) {
+  if (!('speechSynthesis' in window)) { alert('这个浏览器不支持朗读，请用 Edge 或 Chrome'); return; }
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'zh-CN'; u.rate = 0.8;
+  speechSynthesis.speak(u);
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+// ================== 拼读逻辑 ==================
+const state = { mode: 'spell', initial: null, medial: null, final: null, whole: null, tone: null };
+
+/**
+ * 根据当前选择算出音节，返回 { syl(内部写法), kind(音节类型), msgs: [{type, text}] }
+ * 规则：选了整体认读 → 整体认读；没选介母 → 双拼；选了介母 → 三拼
+ * syl 为 null 表示还没选完或拼法不合法
+ */
+function compose() {
+  const res = composeRaw();
+  if (res.syl && !res.kind) {
+    if (WHOLES.includes(res.syl)) res.kind = '整体认读音节';
+    else if (state.medial) res.kind = '三拼音节';
+    else if (state.initial === '') res.kind = '韵母自成音节';
+    else res.kind = '双拼音节';
+  }
+  return res;
+}
+
+function composeRaw() {
+  const { initial, medial, final, whole } = state;
+  const msgs = [];
+  if (whole) {
+    msgs.push({ type: 'tip', text: `「${whole}」是整体认读音节，要整个读出来，不用拼读。` });
+    return { syl: whole, kind: '整体认读音节', msgs };
+  }
+
+  if (!medial) {
+    if (initial === null || !final) return { syl: null, msgs };
+    const ini = initial;   // '' 表示没有声母
+    if (['j', 'q', 'x'].includes(ini) && final.startsWith('u')) {
+      msgs.push({ type: 'err', text: 'j、q、x 不和 u 相拼，只和 ü 相拼哦！试试选 ü。' });
+      return { syl: null, msgs };
+    }
+    if (final.startsWith('ü') && !['n', 'l', 'j', 'q', 'x', 'y', ''].includes(ini)) {
+      msgs.push({ type: 'err', text: '小 ü 很挑朋友，只和 n、l、j、q、x 相拼。' });
+      return { syl: null, msgs };
+    }
+    if (ini === '' && /^(i|u|ü)/.test(final)) {
+      msgs.push({ type: 'err', text: 'i、u、ü 开头的韵母自己成音节时，要请 y 或 w 帮忙，比如 i → yi，u → wu，ü → yu。' });
+      return { syl: null, msgs };
+    }
+    let written = ini + final;
+    if (['j', 'q', 'x', 'y'].includes(ini) && final.startsWith('ü')) {
+      written = ini + final.replace('ü', 'u');
+      msgs.push({ type: 'tip', text: `小 ü 见到 ${ini}，去掉两点还读 ü：写成「${written}」。` });
+    }
+    const syl = written.replace(/ü/g, 'v');
+    if (!VALID.has(syl)) {
+      msgs.push({ type: 'err', text: `普通话里没有「${written}」这个音节，换一个试试吧！` });
+      return { syl: null, msgs };
+    }
+    if (WHOLES.includes(syl)) {
+      msgs.push({ type: 'tip', text: `「${written}」是整体认读音节，要整个读，不用拼读。` });
+    }
+    return { syl, msgs };
+  }
+
+  // 三拼：声母 + 介母 + 韵母
+  if (initial === null || !final) return { syl: null, msgs };
+  if (initial === '') {
+    msgs.push({ type: 'err', text: '没有声母时不用选介母：i、u、ü 开头要请 y 或 w 帮忙，比如 y-a → ya，w-a → wa。' });
+    return { syl: null, msgs };
+  }
+  if (initial === 'y' || initial === 'w') {
+    msgs.push({ type: 'err', text: `${initial} 后面不用再加介母，直接选韵母就行，比如 ${initial}-a → ${initial}a。` });
+    return { syl: null, msgs };
+  }
+  if (!FINALS_THREE.includes(final)) {
+    const joined = medial + final;
+    msgs.push({ type: 'err', text: FINALS_TWO.includes(joined)
+      ? `${medial} 和 ${final} 合起来就是韵母「${joined}」，请取消介母，直接选韵母 ${joined}，这是双拼音节。`
+      : `介母 ${medial} 不能和韵母 ${final} 一起拼，三拼的韵母只有 a、o、ai、ao、an、ang、ong。` });
+    return { syl: null, msgs };
+  }
+  if (medial === 'ü' && !['j', 'q', 'x'].includes(initial)) {
+    msgs.push({ type: 'err', text: '三拼音节里，ü 只和 j、q、x 相拼，比如 j-ü-an → juan。' });
+    return { syl: null, msgs };
+  }
+  if (medial === 'u' && ['j', 'q', 'x'].includes(initial)) {
+    msgs.push({ type: 'err', text: 'j、q、x 不和 u 相拼，只和 ü 相拼哦！' });
+    return { syl: null, msgs };
+  }
+  let written = initial + medial + final;
+  if (medial === 'ü') {
+    written = initial + 'u' + final;
+    msgs.push({ type: 'tip', text: `小 ü 见到 ${initial}，去掉两点还读 ü：写成「${written}」。` });
+  }
+  if (!VALID.has(written)) {
+    msgs.push({ type: 'err', text: `普通话里没有「${written}」这个音节，换一个试试吧！` });
+    return { syl: null, msgs };
+  }
+  return { syl: written, msgs };
+}
+
+/** 刷新结果区 */
+function render() {
+  const { syl, kind, msgs } = compose();
+  const formula = document.getElementById('formula');
+  const bigpy = document.getElementById('bigpy');
+  const msgBox = document.getElementById('msgs');
+  const chars = document.getElementById('chars');
+  msgBox.innerHTML = ''; chars.innerHTML = '';
+  syncSelected();
+
+  // 拼读公式，例如 g - u - a → gua  [三拼音节]
+  const show = p => p === null ? '?' : p === '' ? '(无)' : p;
+  const parts = state.whole ? [state.whole]
+    : state.medial ? [state.initial, state.medial, state.final].map(show)
+    : [state.initial, state.final].map(show);
+  formula.textContent = parts.join(' - ') + (syl && !state.whole ? ' → ' + toWritten(syl) : '');
+  if (kind) formula.appendChild(el('span', 'kind', kind));
+
+  // 声调按钮：有字的声调加小红点
+  document.querySelectorAll('#tones .py-btn').forEach(b => {
+    b.classList.toggle('has', !!(syl && DICT[syl + b.dataset.t]));
+  });
+
+  msgs.forEach(m => msgBox.appendChild(el('div', 'msg ' + m.type, m.text)));
+  if (!syl) { bigpy.textContent = ''; return; }
+
+  const written = toWritten(syl);
+  if (state.tone === null) {
+    bigpy.textContent = written;
+    msgBox.appendChild(el('div', 'msg tip', '拼对啦！再选一个声调，看看能组成什么字。'));
+    return;
+  }
+  bigpy.textContent = (state.tone === 0 ? '·' : '') + addTone(written, state.tone);
+
+  const list = DICT[syl + state.tone];
+  if (!list) {
+    msgBox.appendChild(el('div', 'msg err', '这个声调没有收录常用字，试试带小红点的声调吧！'));
+    return;
+  }
+  msgBox.appendChild(el('div', 'msg ok', `🎉 找到 ${list.length} 个字！`));
+  list.forEach(item => chars.appendChild(charCard(item)));
+}
+
+/** 生成一个汉字卡片：大字 + 组词 */
+function charCard(item) {
+  const card = el('div', 'char-card');
+  const big = el('div', 'char-big', item.c);
+  big.onclick = () => speak(sayChar(item));
+  card.appendChild(big);
+  const words = el('div');
+  item.w.forEach(w => {
+    const s = el('span', 'word', w);
+    s.onclick = () => speak(w);
+    words.appendChild(s);
+  });
+  card.appendChild(words);
+  return card;
+}
+
+/** 生成一组可单选的按钮 */
+function makeButtons(containerId, items, cls, field, labelFn) {
+  const box = document.getElementById(containerId);
+  box.innerHTML = '';
+  items.forEach(v => {
+    const b = el('button', 'py-btn ' + cls, labelFn ? labelFn(v) : v);
+    b.dataset.field = field;
+    b.dataset.v = v;
+    if (field === 'tone') b.dataset.t = v;
+    b.onclick = () => {
+      state[field] = state[field] === v ? null : v;   // 再点一次取消
+      // 整体认读和“声母+介母+韵母”二选一：选了一边就清掉另一边
+      if (state[field] !== null) {
+        if (field === 'whole') Object.assign(state, { initial: null, medial: null, final: null });
+        else if (field !== 'tone') state.whole = null;
+      }
+      render();
+      if (state[field] !== null) speakPick(field, v);   // 取消选择时不读
+    };
+    box.appendChild(b);
+  });
+}
+
+/** 按 state 刷新所有按钮的选中样式 */
+function syncSelected() {
+  document.querySelectorAll('#builder .py-btn').forEach(b => {
+    const cur = state[b.dataset.field];
+    b.classList.toggle('sel', cur !== null && String(cur) === b.dataset.v);
+  });
+}
+
+/**
+ * 点击按钮后的朗读：
+ * - 点声母/介母/韵母/整体认读：读这个音的标准呼读音
+ * - 点声调：读出拼成的字；没有字就语音提示
+ */
+function speakPick(field, value) {
+  if (field !== 'tone') {
+    if (value !== '' && PART_SOUND[value]) speak(PART_SOUND[value]);   // “(无)”声母不读
+    return;
+  }
+  const { syl } = compose();
+  if (!syl) { speak('请先拼出正确的音节'); return; }
+  const list = DICT[syl + value];
+  if (!list) { speak('没有对应的字'); return; }
+  speak(list.map(sayChar).join('，'));   // 同音的几个字依次读出
+}
+
+/** 切换模式 */
+function setMode(mode) {
+  Object.assign(state, { mode, initial: null, medial: null, final: null, whole: null, tone: null });
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  const show = (id, on) => document.getElementById(id).classList.toggle('hidden', !on);
+
+  show('builder', mode === 'spell');
+  show('pick', mode === 'pick');
+  show('quiz', mode === 'quiz');
+  if (mode === 'quiz') { quiz.right = quiz.total = 0; nextQuiz(); return; }
+  stopListening();   // 离开“读一读”时关掉麦克风
+  if (mode === 'pick') { pickQuiz.right = pickQuiz.total = 0; nextPick(); return; }
+
+  makeButtons('initials', ['', ...INITIALS], 'g-initial', 'initial', v => v === '' ? '(无)' : v);
+  makeButtons('medials', MEDIALS, 'g-medial', 'medial');
+  makeButtons('finals', FINALS_TWO, 'g-final', 'final');
+  makeButtons('wholes', WHOLES, 'g-whole', 'whole');
+  makeButtons('tones', TONES.map(x => x.t), 'g-tone', 'tone', t => TONES.find(x => x.t === t).label);
+  render();
+}
+
+// ================== 读一读（录音判断读音） ==================
+// 每个字在字库里的读音，用来把识别出的字反查成拼音，例如 { 马: ['ma3'] }
+const READINGS = {};
+ENTRIES.forEach(e => (READINGS[e.c] = READINGS[e.c] || []).push(e.syl + e.tone));
+// 多音字的朗读替代字（如 常）也算同音字
+Object.entries(SPEAK_AS).forEach(([k, c]) => (READINGS[c] = READINGS[c] || []).push(k.slice(0, -1)));
+
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+// stage：'char' 先读字，'word' 字没读准再读词；done 表示这题结束
+const quiz = { answer: null, stage: 'char', done: false, right: 0, total: 0, listening: false };
+
+/** 显示 'ma3' 这样的读音为带调拼音 */
+function showPy(key) {
+  const tone = Number(key.slice(-1));
+  return (tone === 0 ? '·' : '') + addTone(toWritten(key.slice(0, -1)), tone);
+}
+
+/** 当前要读的内容：字 或 词 */
+function quizTarget() {
+  return quiz.stage === 'char' ? quiz.answer.c : quiz.answer.w[0];
+}
+
+function quizMsg(type, text) {
+  const box = document.getElementById('quiz-msg');
+  box.innerHTML = '';
+  if (text) box.appendChild(el('div', 'msg ' + type, text));
+}
+
+function nextQuiz() {
+  stopListening();
+  const ans = ENTRIES[Math.floor(Math.random() * ENTRIES.length)];
+  // 轻声字单独读不准，直接读词
+  Object.assign(quiz, { answer: ans, stage: ans.tone === 0 ? 'word' : 'char', done: false });
+  quiz.total++;
+  document.getElementById('quiz-py').textContent = showPy(ans.syl + ans.tone);
+  updateQuizView();
+  quizMsg('tip', Recognition ? '先看拼音读一读，再按绿色按钮读给我听。'
+    : '这个浏览器不支持录音识别：电脑请用 Edge 或 Chrome，iPad 请用 Safari 打开。');
+  document.getElementById('quiz-rec').disabled = !Recognition;
+}
+
+function updateQuizView() {
+  const word = quiz.stage === 'word';
+  document.getElementById('quiz-char').textContent = quizTarget();
+  document.getElementById('quiz-ask').textContent = word ? '读一读这个词语：' : '读一读这个字：';
+  document.getElementById('score').textContent = `读对 ${quiz.right} 题 / 共 ${quiz.total} 题`;
+}
+
+/**
+ * 判断识别结果是否读对
+ * texts：识别器给出的几个候选文本
+ * 返回 { ok, heard }，heard 是听到的内容（读错时用来提示）
+ */
+function judge(texts) {
+  const ans = quiz.answer, key = ans.syl + ans.tone;
+  for (const raw of texts) {
+    const t = raw.replace(/[\s，。！？、,.!?]/g, '');
+    if (quiz.stage === 'word' && t.includes(ans.w[0])) return { ok: true };
+    // 识别出目标字，或者同音同调的字（如 他/她/它）都算读对
+    if ([...t].some(ch => ch === ans.c || (READINGS[ch] || []).includes(key))) return { ok: true };
+  }
+  return { ok: false, heard: texts[0] ? texts[0].replace(/[\s，。！？、,.!?]/g, '') : '' };
+}
+
+/** 读错时给提示：如果听到的字在字库里，告诉孩子听起来像哪个音 */
+function wrongHint(heard) {
+  if (!heard) return '没有听清楚，靠近一点，大声再读一次吧！';
+  const ch = [...heard].find(c => READINGS[c]);
+  const like = ch ? `（${showPy(READINGS[ch][0])}）` : '';
+  return `听起来像「${heard}」${like}，注意声调哦！`;
+}
+
+function onHeard(texts) {
+  if (quiz.done) return;
+  const { ok, heard } = judge(texts);
+  if (ok) {
+    quiz.done = true; quiz.right++;
+    updateQuizView();
+    const stars = quiz.stage === 'char' ? '⭐⭐⭐' : '⭐⭐';
+    quizMsg('ok', `${stars} 读得真准！`);
+    speak('读得真准');
+    return;
+  }
+  if (quiz.stage === 'char') {
+    // 单个字读不准（也可能是识别不准），换成词语再试一次
+    quiz.stage = 'word';
+    updateQuizView();
+    quizMsg('err', wrongHint(heard) + ' 换成词语再读一次试试～');
+    speak(quizTarget());
+  } else {
+    quizMsg('err', wrongHint(heard) + ' 先点「听一听」，再读一次。');
+  }
+}
+
+let recognizer = null;
+
+function startListening() {
+  if (!Recognition || quiz.done || quiz.listening) return;
+  speechSynthesis.cancel();   // 别把电脑自己的声音录进去
+  recognizer = new Recognition();
+  recognizer.lang = 'zh-CN';
+  recognizer.interimResults = false;
+  recognizer.maxAlternatives = 5;
+  recognizer.onresult = e => onHeard([...e.results[0]].map(a => a.transcript));
+  recognizer.onerror = e => {
+    const tips = {
+      'no-speech': '没有听到声音，按一下按钮后马上读哦！',
+      'not-allowed': location.protocol === 'https:'
+        ? '麦克风没有打开：电脑请在地址栏左边允许；iPad 请到「设置 → Safari → 麦克风」里允许，再打开「设置 → 隐私与安全性 → 语音识别」。'
+        : '录音需要用 https 网址打开，直接打开文件或局域网地址不能用麦克风。',
+      'service-not-allowed': 'iPad 请到「设置 → 隐私与安全性 → 语音识别」里允许，并确认 Siri 已开启。',
+      'audio-capture': '没有找到麦克风，请检查设备的麦克风。',
+      'network': '识别需要联网，请检查网络。'
+    };
+    quizMsg('err', tips[e.error] || '出了点小问题：' + e.error);
+  };
+  recognizer.onend = () => setListening(false);
+  recognizer.start();
+  setListening(true);
+  quizMsg('tip', '👂 正在听……请读出来');
+}
+
+function stopListening() {
+  if (recognizer) { recognizer.onend = null; recognizer.abort(); recognizer = null; }
+  setListening(false);
+}
+
+function setListening(on) {
+  quiz.listening = on;
+  const btn = document.getElementById('quiz-rec');
+  btn.classList.toggle('listening', on);
+  btn.textContent = on ? '👂 正在听…' : '🎤 按一下，开始读';
+}
+
+document.getElementById('quiz-rec').onclick = startListening;
+document.getElementById('quiz-listen').onclick = () => {
+  speak(quiz.stage === 'char' ? sayChar(quiz.answer) : quizTarget());
+};
+document.getElementById('quiz-next').onclick = nextQuiz;
+
+// ================== 认一认（看拼音选字） ==================
+const pickQuiz = { answer: null, done: false, missed: false, right: 0, total: 0 };
+
+function shuffle(arr) { return arr.sort(() => Math.random() - 0.5); }
+
+function nextPick() {
+  const ans = ENTRIES[Math.floor(Math.random() * ENTRIES.length)];
+  // 干扰项：读音不同的其他字，避免出现两个正确答案
+  const others = shuffle(ENTRIES.filter(e => e.syl + e.tone !== ans.syl + ans.tone));
+  const opts = [ans.c];
+  for (const o of others) {
+    if (!opts.includes(o.c) && !(READINGS[o.c] || []).includes(ans.syl + ans.tone)) opts.push(o.c);
+    if (opts.length === 4) break;
+  }
+  Object.assign(pickQuiz, { answer: ans, done: false, missed: false });
+  pickQuiz.total++;
+
+  document.getElementById('pick-py').textContent = showPy(ans.syl + ans.tone);
+  document.getElementById('pick-msg').innerHTML = '';
+  document.getElementById('pick-words').innerHTML = '';
+  document.getElementById('pick-score').textContent = `答对 ${pickQuiz.right} 题 / 共 ${pickQuiz.total} 题`;
+  const box = document.getElementById('pick-opts');
+  box.innerHTML = '';
+  shuffle(opts).forEach(c => {
+    const b = el('button', 'pick-opt', c);
+    b.onclick = () => checkPick(b, c);
+    box.appendChild(b);
+  });
+}
+
+function checkPick(btn, c) {
+  if (pickQuiz.done) return;
+  const ans = pickQuiz.answer;
+  const msg = document.getElementById('pick-msg');
+  msg.innerHTML = '';
+  if (c === ans.c) {
+    pickQuiz.done = true;
+    if (!pickQuiz.missed) pickQuiz.right++;   // 第一次就选对才算对
+    btn.classList.add('right');
+    msg.appendChild(el('div', 'msg ok', '⭐ 太棒了，答对啦！'));
+    document.getElementById('pick-words').appendChild(charCard(ans));
+    speak(sayChar(ans));
+  } else {
+    pickQuiz.missed = true;
+    btn.classList.add('wrong');
+    msg.appendChild(el('div', 'msg err', '再想想，听一听读音试试 🔊'));
+  }
+  document.getElementById('pick-score').textContent = `答对 ${pickQuiz.right} 题 / 共 ${pickQuiz.total} 题`;
+}
+
+document.getElementById('pick-listen').onclick = () => speak(sayChar(pickQuiz.answer));
+document.getElementById('pick-next').onclick = nextPick;
+// 清除：停止朗读，清空当前页签的所有选择，等待重新拼
+document.getElementById('clear-btn').onclick = () => {
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  setMode(state.mode);
+};
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => setMode(t.dataset.mode));
+setMode('spell');
+
+// 注册离线缓存（只在 https 或 localhost 下生效，直接双击打开文件时会自动跳过）
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
