@@ -1,6 +1,6 @@
 // 离线缓存：第一次打开后把页面存到平板上，没网也能打开“拼一拼”和“认一认”
 // 改了 index.html 后，把版本号加 1，平板才会拿到新版本
-const CACHE = 'pinyin-v1';
+const CACHE = 'pinyin-v2';
 const FILES = ['./', './index.html', './manifest.json',
                './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'];
 

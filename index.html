@@ -38,8 +38,8 @@
   .tab.active { background: #ff7a45; color: #fff; }
   /* 左边选按钮，右边固定显示结果，不用上下滑动 */
   .layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr); gap: 10px; align-items: start; }
-  .result { position: sticky; top: 8px; }
-  @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } .result { position: static; } }
+  .side { position: sticky; top: 8px; }
+  @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } .side { position: static; } }
   .panel { background: #fff; border-radius: 14px; padding: 8px 12px; margin-bottom: 8px;
            box-shadow: 0 3px 10px rgba(0,0,0,.06); }
   .panel h3 { margin: 0 0 6px; font-size: 15px; color: #666; }
@@ -111,7 +111,7 @@
     </div>
   </div>
 
-  <!-- 拼读区：左边选按钮，右边看结果 -->
+  <!-- 拼读区：左边选声母韵母，右边选声调、看结果 -->
   <div id="builder" class="layout">
    <div class="pick">
     <div class="panel"><h3>① 选声母 <span class="sub">（a、ai、er 这类韵母自己成音节时选「(无)」）</span></h3>
@@ -121,9 +121,11 @@
     <div class="panel"><h3>③ 选韵母</h3><div class="btns" id="finals"></div></div>
     <div class="panel"><h3>或者：直接选整体认读音节 <span class="sub">（不用拼，整个读）</span></h3>
       <div class="btns" id="wholes"></div></div>
-    <div class="panel"><h3>④ 选声调 <span class="sub">（小红点表示有字）</span></h3><div class="btns" id="tones"></div></div>
    </div>
 
+   <!-- 右边：上面选声调，下面看结果 -->
+   <div class="side">
+    <div class="panel"><h3>④ 选声调 <span class="sub">（小红点表示有字）</span></h3><div class="btns" id="tones"></div></div>
     <div class="panel result">
       <div class="formula" id="formula"></div>
       <div class="big-py" id="bigpy"></div>
@@ -132,6 +134,7 @@
       <p class="hint">点一点汉字或词语，可以听读音 🔊</p>
       <div class="center"><button class="action clear" id="clear-btn">🧹 清除，重新拼</button></div>
     </div>
+   </div>
   </div>
 
   <!-- 认一认：看拼音选出正确的字 -->
